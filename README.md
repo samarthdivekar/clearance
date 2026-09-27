@@ -88,19 +88,21 @@ Reports are written to `reports/*.md` and `reports/*.json`.
 ## Results
 
 <!-- RESULTS:START -->
-**Preliminary, red-team** (3 real mailboxes: Kaminski, Lay, Skilling; 17,616 unique emails;
-100 restricted emails × 3 probes each: exact, paraphrase, prompt-injection; offline extractive LLM):
+**Red-team** (3 real mailboxes: Kaminski, Lay, Skilling; 17,616 unique emails; 100 restricted
+emails × 3 probes each: exact, paraphrase, prompt-injection; offline extractive LLM):
 
-| cache mode | attacks | cache leaks | content leaks | legit 2nd reader served from cache |
-|---|---|---|---|---|
-| global (naive) | 300 | **223** | **153** | 100% |
-| per_user | 300 | 0 | 0 | 0% |
-| acl_aware | 300 | **0** | **0** | 5.7% |
+| cache configuration | cache leaks | content leaks | legit 2nd reader served from cache |
+|---|---|---|---|
+| global (naive) | **223 / 300** | **153 / 300** | 100% |
+| per_user | 0 | 0 | 0% |
+| acl_aware, v1 (context provenance) | 0 | 0 | 7% |
+| **acl_aware, v2 (dependency provenance)** | **0** | **0** | **37%** |
 
-The naive cache leaks in about 3 of 4 attacks. `acl_aware` closes the leak, but on real data it
-rarely shares (see [the open problem](docs/SECURITY.md#why-the-cache-is-the-interesting-part)),
-which is the next thing to fix. Retrieval ablations and answer-quality numbers need the
-hand-reviewed gold set (`eval_data/`), so they are still to come.
+The naive cache leaks in about 3 of 4 attacks. The first permission-aware version was leak-free
+but shared almost nothing; checking only the chunks an answer depends on raised sharing about 5×
+with zero leaks ([iteration log](docs/SECURITY.md#iteration-log-getting-it-to-share-on-real-data)).
+Still to do: repeat with the real Claude model (paraphrased leaks can't occur with the offline
+model), and retrieval/answer-quality numbers once the hand-reviewed gold set exists.
 <!-- RESULTS:END -->
 
 ## The cache leak
@@ -116,12 +118,16 @@ hand-reviewed gold set (`eval_data/`), so they are still to come.
 | Per-user cache | no | **no**: hit rate collapses |
 | **Source-authorized cache (Clearance)** | **no** | **yes, whenever safe** |
 
-Each cache entry stores the ids of **every** chunk sent to the LLM, not only the cited ones,
-since the model can paraphrase uncited context. A hit is served only if:
+Each cache entry records which chunks its answer **depends on**: the cited ones, plus any
+uncited chunk the answer lifted a distinctive term (name, number, acronym) or phrase from, since
+models don't always cite what they use. A hit is served only if:
 
-1. the requester can read every one of those chunks, **and**
-2. the cached answer covers the requester's own best evidence (≥ 60% of their top-3 retrieved
-   emails), so a user who can see *more* doesn't get a less complete answer.
+1. the requester can read every chunk the answer depends on, **and**
+2. the requester's own best-matching email was in the context the answer was generated from,
+   so a user who can see *more* doesn't get a less complete answer.
+
+The first version checked *every* chunk the model was shown. It was safe but shared almost
+nothing on real data; see the [iteration log](docs/SECURITY.md#iteration-log-getting-it-to-share-on-real-data).
 
 Retrieval runs before the lookup. It costs milliseconds; the LLM call it saves costs seconds
 and cents. "Not found" answers are never shared across users.

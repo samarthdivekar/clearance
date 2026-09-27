@@ -20,9 +20,10 @@ The 5-week plan. Every milestone ends with a number you can put on a resume.
 - [ ] Write-up: *"The semantic cache bug that leaks your data"*
 
 ### Next up (found on real data)
-- [ ] **Raise safe cache sharing above ~5%.** Try provenance tightening: `sources = cited ∪ {uncited
-      chunks with 5-gram overlap with the answer}`. Re-run `eval redteam` with the real LLM
-      (paraphrase leaks can't show up with the extractive FakeLLM) and plot leaks vs. authorized hit rate.
+- [x] **Raise safe cache sharing above ~5%** (now 37%, 0 leaks, offline LLM). Try provenance tightening: `sources = cited ∪ {uncited
+      chunks with distinctive-term or 4-gram overlap}`.
+- [ ] Re-run `eval redteam --llm anthropic` (paraphrased leaks can't show up with the extractive FakeLLM).
+- [ ] Plot leaks vs. authorized hit rate across coverage/provenance settings.
 
 ## Week 3: GraphRAG
 - [x] Header + heuristic entity graph, ACL-filtered traversal
