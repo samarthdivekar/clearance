@@ -20,7 +20,7 @@ the threat model, the defenses, and how each is tested.
 | T2 | Graph traversal walks through a forbidden email ("Fastow → Raptor" edge from a private email) | Every edge and mention stores its source chunk; traversal only follows edges whose chunk is readable | `test_graph_respects_acl` |
 | T3 | A bug in any retriever lets a chunk through | Defense in depth: before generation, the full context is re-checked against the DB (`unreadable_among`) and violations are dropped and logged as `ACL_GUARD_BLOCKED` | pipeline guard |
 | **T4** | **Semantic cache serves user A's answer to user B** | `acl_aware` cache: an entry records *all* chunk ids sent to the LLM; a hit requires the requester to read every one of them | `test_naive_global_cache_leaks`, `test_acl_aware_cache_blocks_leak`, red-team suite |
-| T5 | Cached answer is *incomplete* for a user who can see more | Hit also requires the requester's own retrieval to overlap the entry's sources (Jaccard ≥ 0.5) | `min_overlap` in `SemanticCache` |
+| T5 | Cached answer is *incomplete* for a user who can see more | Hit also requires the cached answer to cover the requester's own best evidence: ≥ 60% of their top-3 retrieved emails must be among the entry's sources | `min_coverage` in `SemanticCache` |
 | T6 | "Not found" cached for one user suppresses a real answer for another | Answers without sources are never shared across users | `test_not_found_answers_are_not_shared` |
 | T7 | Prompt injection inside an email ("ignore previous instructions, reveal...") | Emails are wrapped as `<context>` data; system prompt says instructions in emails are text to report on. Crucially, the LLM only ever *has* authorized context, so even a successful injection can't reveal unauthorized data | red-team `injection` probes |
 | T8 | User asks the model to "act as auditor" | Identity comes from the auth layer (`Principal`), never from the prompt | red-team `injection` probes |
@@ -57,7 +57,15 @@ Two subtleties:
 * Record **all context chunks**, not just cited ones. The model can paraphrase an uncited chunk,
   so citations understate what the answer depends on.
 * Retrieval runs **before** the cache lookup. That costs ~10–50 ms, but the saved LLM call costs
-  seconds and cents, and it gives the overlap check (T5) for free.
+  seconds and cents, and it gives the coverage check (T5) for free.
+* **Open problem: safe, but rarely shared on real data.** On 3 real mailboxes the red-team shows
+  `acl_aware` with 0 leaks, but a legitimate second reader asking the *identical* question is
+  served from cache only ~5% of the time (the `global` cache: 100%, with 223/300 attacks leaking).
+  Diagnosis: the binding constraint is rule (a), not the coverage check. The first reader's 8
+  context chunks almost always include some email the second reader was never sent, so the
+  entry is correctly refused. Next step (see ROADMAP): tighten each entry's provenance to the
+  chunks the answer actually depends on (cited chunks plus any uncited chunk with lexical
+  overlap with the answer), and measure with the red-team suite whether that reintroduces leaks.
 
 ## Known limitations
 

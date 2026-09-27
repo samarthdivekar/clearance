@@ -55,12 +55,13 @@ def cmd_ingest(args) -> None:
 def _service(args, **overrides):
     from clearance.pipeline import RAGService
 
-    settings = get_settings().with_overrides(
-        llm_provider=getattr(args, "llm", None),
-        cache_mode=getattr(args, "cache", None),
-        retrieval_mode=getattr(args, "mode", None),
-        **overrides,
-    )
+    values = {
+        "llm_provider": getattr(args, "llm", None),
+        "cache_mode": getattr(args, "cache", None),
+        "retrieval_mode": getattr(args, "mode", None),
+    }
+    values.update(overrides)
+    settings = get_settings().with_overrides(**values)
     return RAGService.from_settings(settings)
 
 

@@ -200,6 +200,13 @@ class Database:
                 )
         return out
 
+    def chunk_email_ids(self, chunk_ids: Iterable[int]) -> dict[int, int]:
+        ids = sorted(set(chunk_ids))
+        if not ids:
+            return {}
+        q = f"SELECT id, email_id FROM chunks WHERE id IN ({','.join('?' * len(ids))})"
+        return {r["id"]: r["email_id"] for r in self.conn.execute(q, ids)}
+
     def email_ids_for_message_ids(self, message_ids: Iterable[str]) -> dict[str, int]:
         ids = list(message_ids)
         if not ids:

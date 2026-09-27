@@ -65,7 +65,7 @@ def test_acl_aware_cache_blocks_leak(service, people):
 
 
 def test_acl_aware_cache_shares_between_authorized_users(service, people):
-    service.cache = SemanticCache(service.db, mode="acl_aware", threshold=0.8, min_overlap=0.3)
+    service.cache = SemanticCache(service.db, mode="acl_aware", threshold=0.8)
     miss = service.ask(RAPTOR_Q, people["fastow"])
     assert miss.cache_status == "miss"
     hit = service.ask(RAPTOR_Q, people["lay"])  # Lay received the same email

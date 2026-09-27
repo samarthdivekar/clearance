@@ -13,9 +13,10 @@ The analyst never retrieved a forbidden chunk, yet they read its contents. Modes
 * ``acl_aware`` - entries record the chunk ids their answer was built from (*all* context sent to
                   the LLM, not only cited ones: the model can paraphrase uncited context). A hit is
                   served only if (a) the requester can read every source chunk, and (b) the
-                  requester's own retrieval overlaps the entry's sources (Jaccard >= min_overlap).
-                  (a) prevents leaks; (b) prevents serving an answer that is *incomplete* for a
-                  user who can see more. Retrieval runs before the lookup - it costs milliseconds,
+                  requester's own best evidence is covered by the entry: at least `min_coverage`
+                  of the requester's top-`coverage_k` retrieved *emails* appear among the entry's
+                  sources. (a) prevents leaks; (b) prevents serving an answer that is *incomplete*
+                  for a user whose most relevant emails the cached answer never saw. Retrieval runs before the lookup - it costs milliseconds,
                   the LLM call it saves costs seconds and cents.
 * ``off``
 
@@ -60,7 +61,8 @@ class SemanticCache:
         mode: str = "acl_aware",
         threshold: float = 0.92,
         ttl_seconds: int = 86400,
-        min_overlap: float = 0.5,
+        min_coverage: float = 0.6,
+        coverage_k: int = 3,
     ):
         if mode not in MODES:
             raise ValueError(f"cache mode must be one of {MODES}")
@@ -68,7 +70,8 @@ class SemanticCache:
         self.mode = mode
         self.threshold = threshold
         self.ttl_seconds = ttl_seconds
-        self.min_overlap = min_overlap
+        self.min_coverage = min_coverage
+        self.coverage_k = coverage_k
         self._load()
 
     def _load(self) -> None:
@@ -115,12 +118,27 @@ class SemanticCache:
                 if self.db.unreadable_among(principal, sources):
                     result.blocked_for_acl += 1
                     continue
-                if sources and _jaccard(sources, retrieved_ids) < self.min_overlap:
+                if sources and self._coverage(sources, retrieved_ids) < self.min_coverage:
                     result.blocked_for_scope += 1
                     continue
             result.hit = self._hit(i, sim)
             return result
         return result
+
+    def _coverage(self, sources: list[int], retrieved_ids: list[int]) -> float:
+        """Share of the requester's top-k retrieved emails that the cached answer was built from."""
+        email_of = self.db.chunk_email_ids([*sources, *retrieved_ids])
+        top: list[int] = []
+        for cid in retrieved_ids:
+            eid = email_of.get(cid)
+            if eid is not None and eid not in top:
+                top.append(eid)
+            if len(top) == self.coverage_k:
+                break
+        if not top:
+            return 1.0
+        cached = {email_of[c] for c in sources if c in email_of}
+        return sum(e in cached for e in top) / len(top)
 
     def _hit(self, i: int, sim: float) -> CacheHit:
         entry_id = self._ids[i]
@@ -145,10 +163,3 @@ class SemanticCache:
         self._created.append(created)
         self._sources.append(list(source_chunks))
         self._matrix = vec[None, :] if self._matrix.size == 0 else np.vstack([self._matrix, vec[None, :]])
-
-
-def _jaccard(a: list[int], b: list[int]) -> float:
-    sa, sb = set(a), set(b)
-    if not sa and not sb:
-        return 1.0
-    return len(sa & sb) / len(sa | sb)

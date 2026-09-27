@@ -35,7 +35,7 @@ Enron is a good testbed: about 500k real corporate emails where the permissions 
 | 💸 **Cost-aware routing** | Transparent difficulty score sends easy questions to Claude Haiku 4.5 and hard, multi-email ones to Claude Opus 5. Every decision is logged with its reason |
 | 📜 **Audit log** | Every query: principal, chunk ids sent to the LLM, citations, cache status, model, tokens, cost, latency. `clearance audit --chunk N` answers "who had this in their context?" |
 | 🧪 **Eval harness** | Retrieval ablations (recall@k, MRR, nDCG, split by single-hop and multi-hop), an automated red-team suite, a cache/cost benchmark, and LLM-judged faithfulness |
-| 🧰 **Runs offline** | `FakeLLM` + hash embeddings: the whole pipeline, all 39 tests and the security evals run free and deterministically in CI |
+| 🧰 **Runs offline** | `FakeLLM` + hash embeddings: the whole pipeline, all 42 tests and the security evals run free and deterministically in CI |
 
 ## Architecture
 
@@ -88,7 +88,19 @@ Reports are written to `reports/*.md` and `reports/*.json`.
 ## Results
 
 <!-- RESULTS:START -->
-_Run the evals above to fill this section; see `reports/`._
+**Preliminary, red-team** (3 real mailboxes: Kaminski, Lay, Skilling; 17,616 unique emails;
+100 restricted emails × 3 probes each: exact, paraphrase, prompt-injection; offline extractive LLM):
+
+| cache mode | attacks | cache leaks | content leaks | legit 2nd reader served from cache |
+|---|---|---|---|---|
+| global (naive) | 300 | **223** | **153** | 100% |
+| per_user | 300 | 0 | 0 | 0% |
+| acl_aware | 300 | **0** | **0** | 5.7% |
+
+The naive cache leaks in about 3 of 4 attacks. `acl_aware` closes the leak, but on real data it
+rarely shares (see [the open problem](docs/SECURITY.md#why-the-cache-is-the-interesting-part)),
+which is the next thing to fix. Retrieval ablations and answer-quality numbers need the
+hand-reviewed gold set (`eval_data/`), so they are still to come.
 <!-- RESULTS:END -->
 
 ## The cache leak
@@ -108,8 +120,8 @@ Each cache entry stores the ids of **every** chunk sent to the LLM, not only the
 since the model can paraphrase uncited context. A hit is served only if:
 
 1. the requester can read every one of those chunks, **and**
-2. the requester's own retrieval overlaps them (so a user who can see *more* doesn't get a
-   stale, less complete answer).
+2. the cached answer covers the requester's own best evidence (≥ 60% of their top-3 retrieved
+   emails), so a user who can see *more* doesn't get a less complete answer.
 
 Retrieval runs before the lookup. It costs milliseconds; the LLM call it saves costs seconds
 and cents. "Not found" answers are never shared across users.
@@ -146,7 +158,7 @@ src/clearance/
   security/    principals/ACL, audit log + metrics
   evals/       retrieval ablation, red-team, cache bench, LLM judge, question generation
   api/         FastAPI + single-page two-user UI
-tests/         39 tests on a synthetic corpus with deliberately restricted emails
+tests/         42 tests on a synthetic corpus with deliberately restricted emails
 ```
 
 ## Stack

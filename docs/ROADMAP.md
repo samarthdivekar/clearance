@@ -19,6 +19,11 @@ The 5-week plan. Every milestone ends with a number you can put on a resume.
 - [ ] Add group-based ACLs (e.g. `group:legal` from a mapping file) and tests
 - [ ] Write-up: *"The semantic cache bug that leaks your data"*
 
+### Next up (found on real data)
+- [ ] **Raise safe cache sharing above ~5%.** Try provenance tightening: `sources = cited ∪ {uncited
+      chunks with 5-gram overlap with the answer}`. Re-run `eval redteam` with the real LLM
+      (paraphrase leaks can't show up with the extractive FakeLLM) and plot leaks vs. authorized hit rate.
+
 ## Week 3: GraphRAG
 - [x] Header + heuristic entity graph, ACL-filtered traversal
 - [ ] Generate 40 multi-hop questions (`gen-questions --method llm`), review them by hand
