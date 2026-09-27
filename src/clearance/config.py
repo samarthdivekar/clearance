@@ -66,6 +66,10 @@ class Settings:
         default_factory=lambda: int(_env("CLEARANCE_CACHE_TTL_SECONDS", "86400"))
     )
 
+    groups_path: Path = field(
+        default_factory=lambda: Path(_env("CLEARANCE_GROUPS_FILE", "config/groups.toml"))
+    )
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "clearance.db"

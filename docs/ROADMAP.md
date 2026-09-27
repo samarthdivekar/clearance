@@ -16,7 +16,7 @@ The 5-week plan. Every milestone ends with a number you can put on a resume.
 - [x] Defense-in-depth ACL guard
 - [x] Automated red-team suite (exact / paraphrase / injection probes)
 - [ ] Run red-team at `--n 500` on the real corpus; record "0 leaks across N attacks"
-- [ ] Add group-based ACLs (e.g. `group:legal` from a mapping file) and tests
+- [x] Group-based ACLs (`config/groups.toml`): delegated mailboxes, shared folders, exclusions, immediate revocation, `acl explain`
 - [ ] Write-up: *"The semantic cache bug that leaks your data"*
 
 ### Next up (found on real data)

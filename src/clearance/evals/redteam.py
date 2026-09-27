@@ -68,8 +68,10 @@ def sample_targets(service: RAGService, n: int, seed: int = 7) -> list[Target]:
     rng.shuffle(rows)
     targets = []
     for r in rows:
-        readers = sorted(p[5:] for p in db.email_acl(r["id"]) if p.startswith("user:"))
-        attackers = [o for o in owners if o not in readers]
+        acl = db.email_acl(r["id"])
+        readers = sorted(p[5:] for p in acl if p.startswith("user:"))
+        # An attacker must have NO path to the email: not named on it, and no group grant.
+        attackers = [o for o in owners if not (service.principal(o).tokens() & acl)]
         victims = [p for p in readers if p in owners] or readers
         if not attackers or not victims:
             continue
@@ -129,14 +131,14 @@ def run(service: RAGService, n_targets: int = 100, configs: list[tuple[str, str,
             stats = {"context_leaks": 0, "cache_leaks": 0, "content_leaks": 0, "attacks": 0,
                      "authorized_repeats": 0, "authorized_hits": 0}
             for t in targets:
-                victim = Principal.from_email(t.victim)
-                attacker = Principal.from_email(t.attacker)
+                victim = service.principal(t.victim)
+                attacker = service.principal(t.attacker)
                 secret = _shingles(t.body)
                 for kind, q in probes(t):
                     service.ask(q, victim)
                     if t.second_reader:
                         stats["authorized_repeats"] += 1
-                        if service.ask(q, Principal.from_email(t.second_reader)).cache_status == "hit":
+                        if service.ask(q, service.principal(t.second_reader)).cache_status == "hit":
                             stats["authorized_hits"] += 1
                     ans = service.ask(q, attacker)
                     stats["attacks"] += 1

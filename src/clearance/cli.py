@@ -66,10 +66,8 @@ def _service(args, **overrides):
 
 
 def cmd_ask(args) -> None:
-    from clearance.security.acl import Principal
-
     svc = _service(args)
-    ans = svc.ask(args.question, Principal.from_email(args.as_user))
+    ans = svc.ask(args.question, svc.principal(args.as_user))
     if args.json:
         print(json.dumps(ans.to_dict(), indent=2))
         return
@@ -112,6 +110,38 @@ def cmd_audit(args) -> None:
         rows = audit.recent(db, args.limit)
     print(json.dumps(rows, indent=2, default=str))
     print(json.dumps(audit.metrics(db), indent=2))
+
+
+def cmd_acl(args) -> None:
+    from clearance.security.groups import Directory, explain, sync_group_acls
+    from clearance.store.db import Database
+
+    settings = get_settings()
+    directory = Directory(settings.groups_path)
+    if args.acl_command == "groups":
+        if not directory.groups:
+            print(f"No groups defined ({settings.groups_path} missing or empty).")
+        for g in directory.groups.values():
+            print(f"{g.name}: {g.description}")
+            print(f"  members ({len(g.members)}): {', '.join(sorted(g.members))}")
+            for rule in g.grants:
+                fields = {k: v for k, v in rule.__dict__.items() if v}
+                print(f"  grant: {fields}")
+        return
+    db = Database(settings.db_path)
+    if args.acl_command == "sync":
+        counts = sync_group_acls(db, directory)
+        for name, n in counts.items():
+            print(f"  group:{name:<24} {n:>7} emails")
+        print(f"ACL version is now {db.acl_version()}; running servers pick it up on their next query.")
+    elif args.acl_command == "explain":
+        principal = directory.principal(args.as_user)
+        ex = explain(db, directory, principal, args.message_id)
+        print(f"{'CAN' if ex.readable else 'CANNOT'} read {args.message_id}")
+        print(f"  principal tokens: {', '.join(ex.principal_tokens)}")
+        print(f"  email ACL:        {', '.join(ex.acl)}")
+        for reason in ex.reasons:
+            print(f"  because: {reason}")
 
 
 def cmd_gen(args) -> None:
@@ -194,6 +224,15 @@ def main(argv: list[str] | None = None) -> None:
     au.add_argument("--limit", type=int, default=20)
     au.add_argument("--chunk", type=int, help="who had this chunk sent to the LLM?")
     au.set_defaults(func=cmd_audit)
+
+    acl = sub.add_parser("acl", help="group permissions: list, sync, explain")
+    acl_sub = acl.add_subparsers(dest="acl_command", required=True)
+    acl_sub.add_parser("groups", help="list groups, members and grant rules")
+    acl_sub.add_parser("sync", help="recompute group grants from the groups file")
+    ex = acl_sub.add_parser("explain", help="why can (or can't) a user read an email?")
+    ex.add_argument("message_id")
+    ex.add_argument("--as", dest="as_user", required=True)
+    acl.set_defaults(func=cmd_acl)
 
     g = sub.add_parser("gen-questions", help="generate candidate gold questions")
     g.add_argument("--method", choices=["llm", "offline"], default="offline")

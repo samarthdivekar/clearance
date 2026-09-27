@@ -14,7 +14,6 @@ from clearance.cache.semantic import SemanticCache
 from clearance.evals import report
 from clearance.graph.extract import person_label
 from clearance.pipeline import RAGService
-from clearance.security.acl import Principal
 
 TEMPLATES = [
     "What did {who} say about {subject}?",
@@ -53,7 +52,7 @@ def build_workload(service: RAGService, n_emails: int = 60, seed: int = 11) -> l
 def _replay(service: RAGService, workload: list[tuple[str, str]]) -> dict:
     costs, lats, hits, leaks, large = [], [], 0, 0, 0
     for user, q in workload:
-        p = Principal.from_email(user)
+        p = service.principal(user)
         ans = service.ask(q, p)
         costs.append(ans.cost_usd)
         lats.append(ans.latency_ms)

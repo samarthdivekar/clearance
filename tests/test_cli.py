@@ -11,6 +11,7 @@ def env(tmp_path, maildir, monkeypatch):
     monkeypatch.setenv("CLEARANCE_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("CLEARANCE_LLM_PROVIDER", "fake")
     monkeypatch.setenv("CLEARANCE_EMBEDDER", "hash")
+    monkeypatch.setenv("CLEARANCE_GROUPS_FILE", str(tmp_path / "groups.toml"))
     monkeypatch.setattr(report, "REPORTS_DIR", tmp_path / "reports")
     cli.main(["ingest", "--maildir", str(maildir), "--users", "all", "--embedder", "hash"])
     return tmp_path

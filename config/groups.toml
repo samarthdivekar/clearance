@@ -1,0 +1,69 @@
+# Group-based access for the Enron demo corpus.
+#
+# Membership changes take effect on the next query. Grant changes need `clearance acl sync`.
+# Check a decision with: clearance acl explain <message-id> --as <email>
+#
+# Grant rule fields (a rule matches if ANY field matches; exclusions always win):
+#   mailboxes       every email found in these mailbox directories
+#   folders         fnmatch patterns on "<mailbox>/<folder>"
+#   addresses       emails sent to/from these distribution-list addresses
+#   participants    emails these people sent or received
+#   exclude_folders never grant an email if any copy is filed in a matching folder
+
+# Executive offices. In the real corpus the most frequent sender in Ken Lay's and Jeff
+# Skilling's sent folders is an assistant, so assistants get delegated access to the
+# executive's mailbox, minus family/personal folders.
+[groups.exec-office-lay]
+description = "Ken Lay's executive office (delegated mailbox access)"
+members = ["rosalee.fleming@enron.com"]
+
+[[groups.exec-office-lay.grants]]
+mailboxes = ["lay-k"]
+exclude_folders = ["lay-k/family*", "*/personal*"]
+
+[groups.exec-office-skilling]
+description = "Jeff Skilling's executive office (delegated mailbox access)"
+members = ["sherri.sera@enron.com", "joannie.williamson@enron.com"]
+
+[[groups.exec-office-skilling.grants]]
+mailboxes = ["skilling-j"]
+exclude_folders = ["*/personal*"]
+
+# Vince Kaminski's research group shares project folders, but not his personal mail or
+# the resumes of job applicants (HR-sensitive).
+[groups.research]
+description = "Kaminski research group: shared project folders"
+members = [
+    "stinson.gibner@enron.com",
+    "vasant.shanbhogue@enron.com",
+    "paulo.issler@enron.com",
+    "tanya.tamarchenko@enron.com",
+    "zimin.lu@enron.com",
+    "shirley.crenshaw@enron.com",
+]
+
+[[groups.research.grants]]
+folders = [
+    "kaminski-v/var*",
+    "kaminski-v/credit*",
+    "kaminski-v/risk*",
+    "kaminski-v/weather*",
+    "kaminski-v/c/technote/*",
+    "kaminski-v/c/mangmt/group/*",
+]
+exclude_folders = ["*/personal*", "*/resumes*"]
+
+# Legal department: lawyers can read each other's matters.
+[groups.legal]
+description = "Enron / ENA legal department"
+members = [
+    "mark.haedicke@enron.com",
+    "james.derrick@enron.com",
+    "sara.shackleton@enron.com",
+    "elizabeth.sager@enron.com",
+    "mark.taylor@enron.com",
+]
+
+[[groups.legal.grants]]
+mailboxes = ["haedicke-m", "derrick-j", "shackleton-s", "sager-e", "taylor-m"]
+exclude_folders = ["*/personal*"]

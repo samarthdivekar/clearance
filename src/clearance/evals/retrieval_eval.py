@@ -13,7 +13,6 @@ from clearance.evals.dataset import GoldQuestion
 from clearance.evals.metrics import dedup, hit_at_k, mean, mrr, ndcg_at_k, recall_at_k
 from clearance.pipeline import RAGService
 from clearance.retrieval.retriever import RetrievalConfig
-from clearance.security.acl import Principal
 
 ABLATIONS = [
     RetrievalConfig(mode="bm25", use_graph=False),
@@ -30,7 +29,7 @@ def evaluate_config(service: RAGService, questions: list[GoldQuestion], cfg: Ret
     cfg = RetrievalConfig(cfg.mode, cfg.use_graph, cfg.use_reranker, top_k=max(k, 10), candidate_k=50)
     for q in questions:
         t0 = time.perf_counter()
-        results = service.retriever.retrieve(q.question, Principal.from_email(q.principal), cfg)
+        results = service.retriever.retrieve(q.question, service.principal(q.principal), cfg)
         latencies.append((time.perf_counter() - t0) * 1000)
         ranked = dedup([r.chunk.message_id for r in results])
         relevant = set(q.relevant_message_ids)

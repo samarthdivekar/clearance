@@ -91,11 +91,16 @@ class Retriever:
         self.graph = graph
         self.reranker = reranker
         self._readable_cache: OrderedDict[Principal, set[int]] = OrderedDict()
+        self._acl_version = db.acl_version()
 
     def readable(self, principal: Principal) -> set[int] | None:
         """Chunk ids the principal may read (None = everything, for auditors). LRU-cached."""
         if principal.is_auditor:
             return None
+        version = self.db.acl_version()
+        if version != self._acl_version:  # grants changed (e.g. `clearance acl sync` in another process)
+            self._readable_cache.clear()
+            self._acl_version = version
         if principal in self._readable_cache:
             self._readable_cache.move_to_end(principal)
             return self._readable_cache[principal]

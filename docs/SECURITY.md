@@ -12,6 +12,39 @@ the threat model, the defenses, and how each is tested.
 * **Chunks, graph edges, and cache entries** inherit ACLs from the emails they came from. There is
   no second permission system to drift out of sync.
 
+## Groups
+
+`config/groups.toml` defines groups in two halves that change on different clocks:
+
+| Half | Example | Stored | Takes effect |
+|---|---|---|---|
+| **Membership**: who is in the group | `members = ["rosalee.fleming@enron.com"]` | the file, reloaded on change | next query |
+| **Grants**: which emails the group reads | `mailboxes = ["lay-k"]`, `folders = ["kaminski-v/var*"]`, `addresses`, `participants`, `exclude_folders` | `group:<name>` rows in `email_acl`, written by `clearance acl sync` | next query after sync |
+
+Grants are materialized into the same `email_acl` table as per-user ACLs, so retrieval still
+filters with one indexed JOIN and every downstream check (graph, cache, guard) works on groups
+unchanged. Design choices:
+
+* **Revocation is the hard case, so it is tested.** Removing a member takes effect on the next
+  query with no re-sync, including cache hits, because the cache re-checks the requester's
+  *current* tokens (`test_membership_revocation_is_immediate`,
+  `test_cache_shared_within_group_and_revoked_with_membership`). Re-syncing bumps an ACL version
+  that the retriever checks on every query, so cached readable sets are dropped even when the
+  sync ran in another process (`test_grant_revocation_needs_only_resync`).
+* **Exclusions win if *any* copy matches.** Enron keeps a copy of almost everything in
+  `all_documents`, so "exclude if all copies are in personal/" would exclude almost nothing.
+* **The config fails loudly.** Unknown keys, malformed names or addresses, empty rules and
+  match-everything patterns (`folders = ["*"]`) are errors. A typo in a security file must never
+  silently widen or narrow access. "Read everything" is the auditor role, not a group.
+* **Explainable.** `clearance acl explain <message-id> --as <user>` prints whether and *why* a
+  user can read an email (named on it, mailbox owner, or which group).
+* **The audit log records groups at query time**, so an investigation can tell what access a
+  user had *when* they asked, even after membership changes.
+
+On the 3-mailbox index, `config/groups.toml` grants Ken Lay's assistant delegated access to
+3,640 of his emails (her readable chunks go from 1,023 to 6,459), and none of the 828 emails
+filed in Kaminski's `personal`/`resumes` folders reach his research group.
+
 ## Threats and defenses
 
 | # | Threat | Defense | Test |
@@ -24,6 +57,8 @@ the threat model, the defenses, and how each is tested.
 | T6 | "Not found" cached for one user suppresses a real answer for another | Answers without sources are never shared across users | `test_not_found_answers_are_not_shared` |
 | T7 | Prompt injection inside an email ("ignore previous instructions, reveal...") | Emails are wrapped as `<context>` data; system prompt says instructions in emails are text to report on. Crucially, the LLM only ever *has* authorized context, so even a successful injection can't reveal unauthorized data | red-team `injection` probes |
 | T8 | User asks the model to "act as auditor" | Identity comes from the auth layer (`Principal`), never from the prompt | red-team `injection` probes |
+| T10 | A removed group member keeps access (via stale caches or cached answers) | Membership resolved per request; ACL version bump invalidates readable-set caches; cache re-checks current tokens | `test_membership_revocation_is_immediate`, `test_grant_revocation_needs_only_resync` |
+| T11 | A config typo silently grants broad access | Strict schema validation; match-everything patterns rejected | `test_invalid_config_fails_loudly` |
 | T9 | Nobody can reconstruct who saw what after an incident | Append-only audit log of every query: principal, chunk ids sent to the LLM, cited ids, cache status, model, cost. `clearance audit --chunk N` answers "who had chunk N in their context?" | `test_audit_log_records_every_query` |
 
 ## Why the cache is the interesting part

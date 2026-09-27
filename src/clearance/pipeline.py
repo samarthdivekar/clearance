@@ -29,6 +29,7 @@ from clearance.models import Answer, Citation, ScoredChunk
 from clearance.retrieval.retriever import Reranker, RetrievalConfig, Retriever
 from clearance.security import audit
 from clearance.security.acl import Principal
+from clearance.security.groups import Directory
 from clearance.store.db import Database
 from clearance.store.vectors import VectorIndex
 
@@ -44,6 +45,7 @@ class RAGService:
     llm: LLM
     router: Router
     cache: SemanticCache
+    directory: Directory
     audit_enabled: bool = True
 
     @classmethod
@@ -53,6 +55,7 @@ class RAGService:
         llm: LLM | None = None,
         embedder: Embedder | None = None,
         db: Database | None = None,
+        directory: Directory | None = None,
     ) -> RAGService:
         db = db or Database(settings.db_path)
         embedder = embedder or load_embedder(settings.embedder, settings.embed_model)
@@ -75,7 +78,12 @@ class RAGService:
             llm=llm or load_llm(settings.llm_provider),
             router=Router(settings.small_model, settings.large_model, settings.router_threshold),
             cache=SemanticCache(db, settings.cache_mode, settings.cache_threshold, settings.cache_ttl_seconds),
+            directory=directory or Directory(settings.groups_path),
         )
+
+    def principal(self, email: str) -> Principal:
+        """Resolve an authenticated identity to a Principal with its current group memberships."""
+        return self.directory.principal(email)
 
     def default_retrieval_config(self) -> RetrievalConfig:
         s = self.settings

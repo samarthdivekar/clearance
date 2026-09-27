@@ -15,7 +15,6 @@ from clearance.evals.dataset import GoldQuestion
 from clearance.evals.metrics import mean
 from clearance.llm.prompts import JUDGE_PROMPT, JUDGE_SYSTEM, format_context
 from clearance.pipeline import RAGService
-from clearance.security.acl import Principal
 
 JUDGE_SCHEMA = {
     "type": "object",
@@ -52,7 +51,7 @@ def run(service: RAGService, questions: list[GoldQuestion], compare_routing: boo
         for label, force in variants:
             faith, rel, correct, cost, large = [], [], [], 0.0, 0
             for q in questions:
-                ans = service.ask(q.question, Principal.from_email(q.principal), force_model=force)
+                ans = service.ask(q.question, service.principal(q.principal), force_model=force)
                 cost += ans.cost_usd
                 large += ans.model == s.large_model
                 grade = judge(service, q, ans.text, ans.retrieved_chunk_ids)

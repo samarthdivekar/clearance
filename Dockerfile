@@ -5,6 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 
 COPY pyproject.toml README.md ./
 COPY src ./src
+COPY config ./config
 RUN pip install --no-cache-dir -e ".[ml]"
 
 # The index is built outside the image and mounted at /app/data:

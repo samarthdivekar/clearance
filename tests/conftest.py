@@ -94,6 +94,7 @@ def settings(tmp_path: Path) -> Settings:
         cache_mode="acl_aware",
         cache_threshold=0.9,
         top_k=4,
+        groups_path=tmp_path / "groups.toml",  # never the repo's config/groups.toml
     )
 
 

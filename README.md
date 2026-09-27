@@ -33,9 +33,10 @@ Enron is a good testbed: about 500k real corporate emails where the permissions 
 | 🧠 **Hybrid + GraphRAG** | BM25 (SQLite FTS5) + dense vectors (BGE) + knowledge-graph traversal, fused with weighted reciprocal-rank fusion; optional cross-encoder reranker |
 | 💾 **Leak-proof semantic cache** | 4 modes (`off`, `global`, `per_user`, `acl_aware`). `acl_aware` shares hits across users only when the requester can read every source chunk behind the cached answer |
 | 💸 **Cost-aware routing** | Transparent difficulty score sends easy questions to Claude Haiku 4.5 and hard, multi-email ones to Claude Opus 5. Every decision is logged with its reason |
-| 📜 **Audit log** | Every query: principal, chunk ids sent to the LLM, citations, cache status, model, tokens, cost, latency. `clearance audit --chunk N` answers "who had this in their context?" |
+| 👥 **Group permissions** | Delegated mailbox access (assistants), shared project folders, departments. Membership changes apply on the next query, grant changes after `clearance acl sync`; `clearance acl explain` says *why* a user can read an email |
+| 📜 **Audit log** | Every query: principal, groups, chunk ids sent to the LLM, citations, cache status, model, tokens, cost, latency. `clearance audit --chunk N` answers "who had this in their context?" |
 | 🧪 **Eval harness** | Retrieval ablations (recall@k, MRR, nDCG, split by single-hop and multi-hop), an automated red-team suite, a cache/cost benchmark, and LLM-judged faithfulness |
-| 🧰 **Runs offline** | `FakeLLM` + hash embeddings: the whole pipeline, all 42 tests and the security evals run free and deterministically in CI |
+| 🧰 **Runs offline** | `FakeLLM` + hash embeddings: the whole pipeline, all 63 tests and the security evals run free and deterministically in CI |
 
 ## Architecture
 
@@ -164,7 +165,7 @@ src/clearance/
   security/    principals/ACL, audit log + metrics
   evals/       retrieval ablation, red-team, cache bench, LLM judge, question generation
   api/         FastAPI + single-page two-user UI
-tests/         42 tests on a synthetic corpus with deliberately restricted emails
+tests/         63 tests on a synthetic corpus with deliberately restricted emails
 ```
 
 ## Stack

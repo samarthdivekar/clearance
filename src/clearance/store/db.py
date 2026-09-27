@@ -76,10 +76,17 @@ CREATE TABLE IF NOT EXISTS edges (
 CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src);
 CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst);
 
+-- Bumped whenever ACL rows change (group sync); caches of readable sets compare against it.
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id               INTEGER PRIMARY KEY,
     ts               TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     principal        TEXT NOT NULL,
+    principal_groups TEXT,     -- JSON list of the principal's groups at query time
     question         TEXT NOT NULL,
     retrieved        TEXT,     -- JSON list of chunk ids sent to the LLM
     cited            TEXT,     -- JSON list of chunk ids cited in the answer
@@ -120,7 +127,20 @@ class Database:
         cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(cache_entries)")}
         if "context_chunks" not in cols:
             self.conn.execute("ALTER TABLE cache_entries ADD COLUMN context_chunks TEXT")
-            self.conn.commit()
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(audit_log)")}
+        if "principal_groups" not in cols:
+            self.conn.execute("ALTER TABLE audit_log ADD COLUMN principal_groups TEXT")
+        self.conn.commit()
+
+    def acl_version(self) -> int:
+        row = self.conn.execute("SELECT value FROM meta WHERE key = 'acl_version'").fetchone()
+        return int(row[0]) if row else 0
+
+    def bump_acl_version(self) -> None:
+        self.conn.execute(
+            """INSERT INTO meta (key, value) VALUES ('acl_version', '1')
+               ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1"""
+        )
 
     # One connection per thread: FastAPI serves requests from a thread pool.
     @property
@@ -145,6 +165,7 @@ class Database:
         for table in ("edges", "mentions", "entities", "cache_entries", "chunks", "email_acl", "emails"):
             c.execute(f"DELETE FROM {table}")
         c.execute("INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')")
+        self.bump_acl_version()
         c.commit()
 
     def insert_email(self, email: Email, acl: Iterable[str]) -> int:

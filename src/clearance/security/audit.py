@@ -12,11 +12,12 @@ from clearance.store.db import Database
 
 def record(db: Database, principal: Principal, answer: Answer) -> None:
     db.conn.execute(
-        """INSERT INTO audit_log (principal, question, retrieved, cited, cache_status, model, route_reason,
+        """INSERT INTO audit_log (principal, principal_groups, question, retrieved, cited, cache_status, model, route_reason,
                                   input_tokens, output_tokens, cost_usd, latency_ms, security_events)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             principal.id,
+            json.dumps(sorted(principal.groups)),
             answer.question,
             json.dumps(answer.retrieved_chunk_ids),
             json.dumps([c.chunk_id for c in answer.citations]),
@@ -44,7 +45,7 @@ def recent(db: Database, limit: int = 100, principal: str | None = None) -> list
     out = []
     for r in db.conn.execute(q, args):
         d = dict(r)
-        for key in ("retrieved", "cited", "security_events"):
+        for key in ("principal_groups", "retrieved", "cited", "security_events"):
             d[key] = json.loads(d[key] or "[]")
         out.append(d)
     return out

@@ -12,6 +12,7 @@ from clearance.embeddings import Embedder, load_embedder
 from clearance.graph.extract import build_graph
 from clearance.ingest.chunker import chunk_email
 from clearance.ingest.parser import parse_maildir
+from clearance.security.groups import Directory, sync_group_acls
 from clearance.store.db import Database
 from clearance.store.vectors import VectorIndex
 
@@ -47,6 +48,9 @@ def run_ingest(
             n_chunks += 1
     db.commit()
     print(f"      {n_chunks} chunks")
+    if settings.groups_path.exists():
+        counts = sync_group_acls(db, Directory(settings.groups_path))
+        print(f"      group grants: {counts}")
 
     print("[3/4] Embedding chunks ...")
     embedder = embedder or load_embedder(settings.embedder, settings.embed_model)

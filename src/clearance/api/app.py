@@ -34,10 +34,13 @@ def get_service() -> RAGService:
     return RAGService.from_settings(settings)
 
 
-def current_principal(x_principal: str = Header(..., description="Demo identity; use real auth in production")) -> Principal:
+def current_principal(
+    x_principal: str = Header(..., description="Demo identity; use real auth in production"),
+    svc: RAGService = Depends(get_service),
+) -> Principal:
     if not x_principal.strip():
         raise HTTPException(401, "Missing identity")
-    return Principal.from_email(x_principal)
+    return svc.principal(x_principal)
 
 
 class AskRequest(BaseModel):
@@ -58,7 +61,8 @@ def health() -> dict:
 @app.get("/api/principals")
 def principals(svc: RAGService = Depends(get_service)) -> dict:
     owners = svc.db.mailbox_owners()
-    return {"principals": owners, "special": ["auditor"]}
+    members = sorted({m for g in svc.directory.groups.values() for m in g.members} - set(owners))
+    return {"principals": owners + members, "special": ["auditor"]}
 
 
 @app.post("/api/ask")
