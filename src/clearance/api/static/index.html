@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clearance</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --border: #e3e2de;
+    --accent: #2f5bd3; --ok: #1f7a4d; --warn: #b4531a; --bad: #b3261e; --chip: #f0efeb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151514; --panel: #1f1f1d; --text: #ecebe7; --muted: #a09f99; --border: #34332f;
+            --accent: #7c9cf5; --ok: #5cc28f; --warn: #e39a5b; --bad: #f07b72; --chip: #2a2a27; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 20px 24px 8px; max-width: 1200px; margin: 0 auto; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  main { max-width: 1200px; margin: 0 auto; padding: 8px 24px 40px; }
+  .ask { display: flex; gap: 8px; margin: 12px 0 16px; }
+  .ask input { flex: 1; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font: inherit; }
+  button { padding: 10px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: wait; }
+  .examples { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+  .examples button { background: var(--chip); color: var(--text); font-weight: 400; padding: 4px 10px; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  .pane { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-height: 220px; }
+  .pane label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px; }
+  .pane select { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; }
+  .answer { margin-top: 14px; white-space: pre-wrap; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+  .badge.hit { color: var(--ok); } .badge.large { color: var(--warn); } .badge.sec { color: var(--bad); font-weight: 600; }
+  .cites { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 8px; }
+  details { margin: 6px 0; font-size: 13px; }
+  summary { cursor: pointer; color: var(--muted); }
+  details div { margin: 6px 0 0 14px; white-space: pre-wrap; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 24px; }
+  .metric { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .metric b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .metric span { font-size: 12px; color: var(--muted); }
+  .error { color: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Clearance</h1>
+  <p>Ask the Enron email archive the same question as two different people. Each answer is built only from emails that person was allowed to read.</p>
+</header>
+<main>
+  <form class="ask" id="form">
+    <input id="q" placeholder="e.g. What were the concerns about the Raptor structures?" autocomplete="off" required>
+    <button id="go" type="submit">Ask as both</button>
+  </form>
+  <div class="examples" id="examples"></div>
+  <div class="grid">
+    <section class="pane" data-pane="0"><label>Ask as</label><select></select><div class="out"></div></section>
+    <section class="pane" data-pane="1"><label>Ask as</label><select></select><div class="out"></div></section>
+  </div>
+  <div class="metrics" id="metrics"></div>
+</main>
+<script>
+const EXAMPLES = [
+  "What were the concerns about the Raptor structures?",
+  "What did Vince Kaminski say about LJM?",
+  "What was discussed about the California energy crisis?",
+  "Who approved the Dabhol power project decisions?",
+];
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+async function api(path, opts = {}, principal) {
+  const headers = {"Content-Type": "application/json", ...(principal ? {"X-Principal": principal} : {})};
+  const r = await fetch(path, {...opts, headers});
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || r.statusText);
+  return body;
+}
+
+function render(out, a) {
+  const badges = [
+    `<span class="badge ${a.cache_status === "hit" ? "hit" : ""}">cache: ${esc(a.cache_status)}</span>`,
+    `<span class="badge ${/opus|fable/.test(a.model) ? "large" : ""}">${esc(a.model)}</span>`,
+    `<span class="badge">$${a.cost_usd.toFixed(5)}</span>`,
+    `<span class="badge">${Math.round(a.latency_ms)} ms</span>`,
+    ...a.security_events.map((e) => `<span class="badge sec">${esc(e)}</span>`),
+  ].join("");
+  const cites = a.citations.map((c) => `
+    <details><summary>[${c.n}] ${esc(c.date)} · ${esc(c.sender)} · ${esc(c.subject)}</summary><div>${esc(c.snippet)}</div></details>`).join("");
+  out.innerHTML = `<div class="answer">${esc(a.answer)}</div><div class="badges">${badges}</div>
+    ${cites ? `<div class="cites">${cites}</div>` : ""}
+    <details><summary>route</summary><div>${esc(a.route_reason)}</div></details>`;
+}
+
+async function refreshMetrics() {
+  try {
+    const m = await api("/api/metrics");
+    const items = [
+      ["queries", m.queries ?? 0], ["cache hit rate", m.cache_hit_rate != null ? (100 * m.cache_hit_rate).toFixed(0) + "%" : "-"],
+      ["total cost", m.total_cost_usd != null ? "$" + m.total_cost_usd.toFixed(4) : "-"],
+      ["p50 latency", m.latency_p50_ms != null ? m.latency_p50_ms + " ms" : "-"],
+      ["p95 latency", m.latency_p95_ms != null ? m.latency_p95_ms + " ms" : "-"],
+      ["security events", m.security_events ?? 0], ["cache mode", m.cache_mode],
+    ];
+    $("#metrics").innerHTML = items.map(([k, v]) => `<div class="metric"><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join("");
+  } catch (e) { /* not indexed yet */ }
+}
+
+async function init() {
+  $("#examples").innerHTML = EXAMPLES.map((q) => `<button type="button">${esc(q)}</button>`).join("");
+  $("#examples").addEventListener("click", (e) => { if (e.target.tagName === "BUTTON") { $("#q").value = e.target.textContent; $("#form").requestSubmit(); } });
+  try {
+    const { principals, special } = await api("/api/principals");
+    const opts = [...special, ...principals].map((p) => `<option>${esc(p)}</option>`).join("");
+    document.querySelectorAll(".pane select").forEach((s, i) => { s.innerHTML = opts; s.selectedIndex = Math.min(i + 1, s.options.length - 1); });
+  } catch (e) {
+    document.querySelectorAll(".pane .out").forEach((o) => o.innerHTML = `<p class="error">${esc(e.message)}</p>`);
+  }
+  refreshMetrics();
+}
+
+$("#form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const q = $("#q").value.trim();
+  if (!q) return;
+  $("#go").disabled = true;
+  // Sequential on purpose: the second pane can then hit (or be refused) the cache entry the first created.
+  for (const pane of document.querySelectorAll(".pane")) {
+    const out = $(".out", pane);
+    out.innerHTML = `<p class="answer" style="color:var(--muted)">Thinking…</p>`;
+    try { render(out, await api("/api/ask", {method: "POST", body: JSON.stringify({question: q})}, $("select", pane).value)); }
+    catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+  }
+  $("#go").disabled = false;
+  refreshMetrics();
+});
+
+init();
+</script>
+</body>
+</html>
