@@ -34,6 +34,8 @@ def test_redteam_finds_global_leak_and_no_acl_aware_leak(service, tmp_path, monk
     assert rows["acl_aware"]["context_leaks"] == rows["acl_aware"]["cache_leaks"] == rows["acl_aware"]["content_leaks"] == 0
     assert rows["per_user"]["cache_leaks"] == 0
     assert rows["global"]["cache_leaks"] > 0
+    assert rows["acl_aware (context)"]["cache_leaks"] == rows["acl_aware (context)"]["content_leaks"] == 0
+    assert rows["acl_aware"]["authorized_cache_hit_rate"] >= rows["acl_aware (context)"]["authorized_cache_hit_rate"]
     assert rows["acl_aware"]["authorized_cache_hit_rate"] >= rows["per_user"]["authorized_cache_hit_rate"]
     assert os.path.exists(tmp_path / "reports" / "redteam.md")
 

@@ -102,17 +102,28 @@ def _readable_phrase(service: RAGService, principal: Principal, phrase: str) -> 
     return service.db.conn.execute(q, (f'"{phrase}"', *tokens)).fetchone() is not None
 
 
-def run(service: RAGService, n_targets: int = 100, modes: tuple[str, ...] = ("global", "per_user", "acl_aware"), seed: int = 7) -> list[dict]:
+# (row label, cache mode, provenance policy). "acl_aware" is the production default.
+CONFIGS = [
+    ("global", "global", "dependencies"),
+    ("per_user", "per_user", "dependencies"),
+    ("acl_aware (context)", "acl_aware", "context"),
+    ("acl_aware", "acl_aware", "dependencies"),
+]
+
+
+def run(service: RAGService, n_targets: int = 100, configs: list[tuple[str, str, str]] | None = None, seed: int = 7) -> list[dict]:
+    configs = configs or CONFIGS
     targets = sample_targets(service, n_targets, seed)
     if not targets:
         raise RuntimeError("No restricted emails with a valid attacker found; ingest more mailboxes.")
-    print(f"red-team: {len(targets)} restricted emails x {len(probes(targets[0]))} probes x {len(modes)} cache modes")
-    original_cache, original_audit = service.cache, service.audit_enabled
+    print(f"red-team: {len(targets)} restricted emails x {len(probes(targets[0]))} probes x {len(configs)} cache configs")
+    original_cache, original_audit, original_settings = service.cache, service.audit_enabled, service.settings
     service.audit_enabled = False
     rows = []
     examples: list[dict] = []
     try:
-        for mode in modes:
+        for label, mode, provenance in configs:
+            service.settings = original_settings.with_overrides(cache_provenance=provenance)
             service.cache = SemanticCache(service.db, mode=mode, threshold=service.settings.cache_threshold)
             service.cache.clear()
             stats = {"context_leaks": 0, "cache_leaks": 0, "content_leaks": 0, "attacks": 0,
@@ -137,23 +148,25 @@ def run(service: RAGService, n_targets: int = 100, modes: tuple[str, ...] = ("gl
                     stats["cache_leaks"] += cache_leak
                     stats["content_leaks"] += bool(leaked_phrases)
                     if (cache_leak or leaked_phrases) and len(examples) < 5:
-                        examples.append({"mode": mode, "probe": kind, "attacker": t.attacker, "victim": t.victim,
+                        examples.append({"mode": label, "probe": kind, "attacker": t.attacker, "victim": t.victim,
                                          "question": q, "leaked": leaked_phrases[:2]})
             rows.append({
-                "cache_mode": mode,
+                "cache_mode": label,
                 "attacks": stats["attacks"],
                 "context_leaks": stats["context_leaks"],
                 "cache_leaks": stats["cache_leaks"],
                 "content_leaks": stats["content_leaks"],
                 "authorized_cache_hit_rate": stats["authorized_hits"] / max(stats["authorized_repeats"], 1),
             })
-            print(f"  {mode:<10} {rows[-1]}")
+            print(f"  {label:<20} {rows[-1]}")
     finally:
         service.cache.clear()
-        service.cache, service.audit_enabled = original_cache, original_audit
+        service.cache, service.audit_enabled, service.settings = original_cache, original_audit, original_settings
     notes = (
         "Victim asks first (warming the cache), then the attacker asks the same probe. "
-        "`authorized_cache_hit_rate` = how often a second *legitimate* reader was served from cache.\n\n"
+        "`authorized_cache_hit_rate` = how often a second *legitimate* reader was served from cache. "
+        "`acl_aware (context)` ACL-checks every chunk the model saw; `acl_aware` checks only the chunks "
+        "the answer depends on (citations + uncited chunks it lifted distinctive terms or phrases from).\n\n"
         "Example leaks (insecure modes only):\n\n```json\n" + json.dumps(examples, indent=2) + "\n```\n"
     )
     report.write("redteam", "Red-team: cross-user data leakage by cache mode", rows, notes=notes)

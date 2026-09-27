@@ -17,6 +17,7 @@ import re
 import time
 from dataclasses import dataclass
 
+from clearance.cache.provenance import answer_dependencies
 from clearance.cache.semantic import SemanticCache
 from clearance.config import Settings
 from clearance.embeddings import Embedder, embed_query, load_embedder
@@ -137,18 +138,27 @@ class RAGService:
         else:
             answer = self._generate(question, context, force_model)
             answer.security_events = events
+            # "Not found" answers get no sources and are never shared (see SemanticCache).
+            sources = self._cache_sources(question, answer, context) if answer.citations else []
             self.cache.store(
                 question,
                 qvec,
                 principal,
                 {"answer": answer.text, "citations": [c.__dict__ for c in answer.citations], "model": answer.model},
-                context_ids if answer.citations else [],
+                sources,
+                context_ids,
             )
 
         answer.latency_ms = (time.perf_counter() - t0) * 1000
         if self.audit_enabled:
             audit.record(self.db, principal, answer)
         return answer
+
+    def _cache_sources(self, question: str, answer: Answer, context: list[ScoredChunk]) -> list[int]:
+        chunks = [c.chunk for c in context]
+        if self.settings.cache_provenance == "context":
+            return [c.id for c in chunks]
+        return answer_dependencies(answer.text, question, chunks, {c.chunk_id for c in answer.citations})
 
     def _generate(self, question: str, context: list[ScoredChunk], force_model: str | None) -> Answer:
         if force_model:

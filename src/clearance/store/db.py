@@ -100,7 +100,8 @@ CREATE TABLE IF NOT EXISTS cache_entries (
     question       TEXT NOT NULL,
     embedding      BLOB NOT NULL,
     answer         TEXT NOT NULL,   -- JSON serialized Answer payload
-    source_chunks  TEXT NOT NULL,   -- JSON list of chunk ids the answer was built from
+    source_chunks  TEXT NOT NULL,   -- JSON list of chunk ids the answer depends on (ACL check)
+    context_chunks TEXT,            -- JSON list of every chunk id the model was shown (coverage check)
     hits           INTEGER DEFAULT 0
 );
 """
@@ -113,6 +114,13 @@ class Database:
             self.path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
         self.conn.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(cache_entries)")}
+        if "context_chunks" not in cols:
+            self.conn.execute("ALTER TABLE cache_entries ADD COLUMN context_chunks TEXT")
+            self.conn.commit()
 
     # One connection per thread: FastAPI serves requests from a thread pool.
     @property

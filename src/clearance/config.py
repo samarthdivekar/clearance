@@ -57,6 +57,11 @@ class Settings:
     cache_threshold: float = field(
         default_factory=lambda: float(_env("CLEARANCE_CACHE_THRESHOLD", "0.92"))
     )
+    # "dependencies": ACL-check only the chunks the answer depends on (shares far more often).
+    # "context": ACL-check every chunk the model was shown (strictest, rarely shares).
+    cache_provenance: str = field(
+        default_factory=lambda: _env("CLEARANCE_CACHE_PROVENANCE", "dependencies")
+    )
     cache_ttl_seconds: int = field(
         default_factory=lambda: int(_env("CLEARANCE_CACHE_TTL_SECONDS", "86400"))
     )

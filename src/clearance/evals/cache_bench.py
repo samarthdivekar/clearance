@@ -78,18 +78,21 @@ def run(service: RAGService, n_emails: int = 60) -> list[dict]:
         raise RuntimeError("Could not build a workload: need emails shared by 2+ mailbox owners.")
     print(f"cache bench: {len(workload)} queries over {n_emails} shared emails")
     original_cache, original_router, original_audit = service.cache, service.router, service.audit_enabled
+    original_settings = service.settings
     service.audit_enabled = False
     s = service.settings
     configs = [
-        ("no cache, always large", "off", s.large_model),
-        ("no cache, routed", "off", None),
-        ("per_user cache, routed", "per_user", None),
-        ("acl_aware cache, routed", "acl_aware", None),
-        ("global cache (INSECURE), routed", "global", None),
+        ("no cache, always large", "off", s.large_model, "dependencies"),
+        ("no cache, routed", "off", None, "dependencies"),
+        ("per_user cache, routed", "per_user", None, "dependencies"),
+        ("acl_aware (context provenance), routed", "acl_aware", None, "context"),
+        ("acl_aware cache, routed", "acl_aware", None, "dependencies"),
+        ("global cache (INSECURE), routed", "global", None, "dependencies"),
     ]
     rows = []
     try:
-        for label, mode, force in configs:
+        for label, mode, force, provenance in configs:
+            service.settings = s.with_overrides(cache_provenance=provenance)
             service.cache = SemanticCache(service.db, mode=mode, threshold=s.cache_threshold)
             service.cache.clear()
             if force:
@@ -97,10 +100,11 @@ def run(service: RAGService, n_emails: int = 60) -> list[dict]:
             else:
                 service.router = original_router
             rows.append({"config": label, **_replay(service, workload)})
-            print(f"  {label:<34} hit={rows[-1]['cache_hit_rate']:.2f} cost=${rows[-1]['total_cost_usd']:.4f} leaks={rows[-1]['leaks']}")
+            print(f"  {label:<40} hit={rows[-1]['cache_hit_rate']:.2f} cost=${rows[-1]['total_cost_usd']:.4f} leaks={rows[-1]['leaks']}")
     finally:
         service.cache.clear()
         service.cache, service.router, service.audit_enabled = original_cache, original_router, original_audit
+        service.settings = original_settings
     baseline = rows[0]["total_cost_usd"] or 1e-9
     for r in rows:
         r["cost_vs_baseline"] = f"{100 * (1 - r['total_cost_usd'] / baseline):+.0f}% saved" if r is not rows[0] else "baseline"
